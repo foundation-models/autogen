@@ -1,10 +1,11 @@
+import os
 from typing import List, Optional
 from dataclasses import asdict
 import autogen
 from .datamodel import AgentFlowSpec, AgentWorkFlowConfig, Message
 from .utils import get_skills_from_prompt, clear_folder
 from datetime import datetime
-
+from medinote.curation.util import update_message
 
 class AutoGenWorkFlowManager:
     """
@@ -28,6 +29,7 @@ class AutoGenWorkFlowManager:
 
         """
         self.work_dir = work_dir or "work_dir"
+        os.makedirs(self.work_dir, exist_ok=True)
         if clear_work_dir:
             clear_folder(self.work_dir)
 
@@ -108,6 +110,12 @@ class AutoGenWorkFlowManager:
         if agent_spec.skills:
             # get skill prompt, also write skills to a file named skills.py
             skills_prompt = get_skills_from_prompt(agent_spec.skills, self.work_dir)
+            if skills_prompt:
+                skills = skills_prompt.split("#### Begin of")[1].split("#### End of")[0].strip()
+                skill_name = skills.split("#####\n\n")[0].strip()
+                start_index = skills.find("#####\n\n") + len("#####\n\n")
+                skill_value = skills[start_index:].strip()
+                self.skills = { skill_name: skill_value}
 
         if agent_spec.type == "userproxy":
             code_execution_config = agent_spec.config.code_execution_config or {}
@@ -156,6 +164,7 @@ class AutoGenWorkFlowManager:
             message: The initial message to start the chat.
             clear_history: If set to True, clears the chat history before initiating.
         """
+        message = update_message(function_dict=self.skills, input=message)        
         self.sender.initiate_chat(
             self.receiver,
             message=message,
