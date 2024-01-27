@@ -164,7 +164,7 @@ class AutoGenWorkFlowManager:
             message: The initial message to start the chat.
             clear_history: If set to True, clears the chat history before initiating.
         """
-        message = update_message(function_dict=self.skills, input=message)        
+        message = update_message(function_dict=self.skills, input=message, agent=self.receiver)        
         self.sender.initiate_chat(
             self.receiver,
             message=message,
