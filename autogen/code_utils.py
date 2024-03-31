@@ -8,14 +8,13 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from hashlib import md5
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from autogen import oai
 
-try:
-    import docker
-except ImportError:
-    docker = None
+import docker
+
+from .types import UserMessageImageContentPart, UserMessageTextContentPart
 
 SENTINEL = object()
 DEFAULT_MODEL = "gpt-4"
@@ -40,8 +39,8 @@ PATH_SEPARATOR = WIN32 and "\\" or "/"
 logger = logging.getLogger(__name__)
 
 
-def content_str(content: Union[str, List, None]) -> str:
-    """Converts `content` into a string format.
+def content_str(content: Union[str, List[Union[UserMessageTextContentPart, UserMessageImageContentPart]], None]) -> str:
+    """Converts the `content` field of an OpenAI merssage into a string format.
 
     This function processes content that may be a string, a list of mixed text and image URLs, or None,
     and converts it into a string. Text is directly appended to the result string, while image URLs are
@@ -81,7 +80,7 @@ def content_str(content: Union[str, List, None]) -> str:
     return rst
 
 
-def infer_lang(code):
+def infer_lang(code: str) -> str:
     """infer the language for the code.
     TODO: make it robust.
     """
@@ -216,24 +215,52 @@ def timeout_handler(signum, frame):
     raise TimeoutError("Timed out!")
 
 
-def _cmd(lang):
-    if lang.startswith("python") or lang in ["bash", "sh", "powershell"]:
+def get_powershell_command():
+    try:
+        result = subprocess.run(["powershell", "$PSVersionTable.PSVersion.Major"], capture_output=True, text=True)
+        if result.returncode == 0:
+            return "powershell"
+    except (FileNotFoundError, NotADirectoryError):
+        # This means that 'powershell' command is not found so now we try looking for 'pwsh'
+        try:
+            result = subprocess.run(
+                ["pwsh", "-Command", "$PSVersionTable.PSVersion.Major"], capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                return "pwsh"
+        except FileExistsError as e:
+            raise FileNotFoundError(
+                "Neither powershell.exe nor pwsh.exe is present in the system. "
+                "Please install PowerShell and try again. "
+            ) from e
+        except NotADirectoryError as e:
+            raise NotADirectoryError(
+                "PowerShell is either not installed or its path is not given "
+                "properly in the environment variable PATH. Please check the "
+                "path and try again. "
+            ) from e
+    except PermissionError as e:
+        raise PermissionError("No permission to run powershell.") from e
+
+
+def _cmd(lang: str) -> str:
+    if lang.startswith("python") or lang in ["bash", "sh"]:
         return lang
     if lang in ["shell"]:
         return "sh"
-    if lang in ["ps1"]:
-        return "powershell"
+    if lang in ["ps1", "pwsh", "powershell"]:
+        powershell_command = get_powershell_command()
+        return powershell_command
+
     raise NotImplementedError(f"{lang} not recognized in code execution")
 
 
-def is_docker_running():
+def is_docker_running() -> bool:
     """Check if docker is running.
 
     Returns:
         bool: True if docker is running; False otherwise.
     """
-    if docker is None:
-        return False
     try:
         client = docker.from_env()
         client.ping()
@@ -242,7 +269,7 @@ def is_docker_running():
         return False
 
 
-def in_docker_container():
+def in_docker_container() -> bool:
     """Check if the code is running in a docker container.
 
     Returns:
@@ -320,7 +347,7 @@ def execute_code(
     work_dir: Optional[str] = None,
     use_docker: Union[List[str], str, bool] = SENTINEL,
     lang: Optional[str] = "python",
-) -> Tuple[int, str, str]:
+) -> Tuple[int, str, Optional[str]]:
     """Execute code in a docker container.
     This function is not tested on MacOS.
 
@@ -394,29 +421,20 @@ def execute_code(
             sys.executable if lang.startswith("python") else _cmd(lang),
             f".\\{filename}" if WIN32 else filename,
         ]
-        if WIN32:
-            logger.warning("SIGALRM is not supported on Windows. No timeout will be enforced.")
-            result = subprocess.run(
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                subprocess.run,
                 cmd,
                 cwd=work_dir,
                 capture_output=True,
                 text=True,
             )
-        else:
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    subprocess.run,
-                    cmd,
-                    cwd=work_dir,
-                    capture_output=True,
-                    text=True,
-                )
-                try:
-                    result = future.result(timeout=timeout)
-                except TimeoutError:
-                    if original_filename is None:
-                        os.remove(filepath)
-                    return 1, TIMEOUT_MSG, None
+            try:
+                result = future.result(timeout=timeout)
+            except TimeoutError:
+                if original_filename is None:
+                    os.remove(filepath)
+                return 1, TIMEOUT_MSG, None
         if original_filename is None:
             os.remove(filepath)
         if result.returncode:
@@ -442,9 +460,7 @@ def execute_code(
     image_list = (
         ["python:3-slim", "python:3", "python:3-windowsservercore"]
         if use_docker is True
-        else [use_docker]
-        if isinstance(use_docker, str)
-        else use_docker
+        else [use_docker] if isinstance(use_docker, str) else use_docker
     )
     for image in image_list:
         # check if the image exists

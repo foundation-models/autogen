@@ -739,18 +739,18 @@ class Completion(openai_Completion):
                     "api_key": os.environ.get("AZURE_OPENAI_API_KEY"),
                     "api_type": "azure",
                     "base_url": os.environ.get("AZURE_OPENAI_API_BASE"),
-                    "api_version": "2023-03-15-preview",
+                    "api_version": "2024-02-15-preview",
                 },
                 {
                     "model": "gpt-3.5-turbo",
                     "api_key": os.environ.get("OPENAI_API_KEY"),
-                    "api_type": "open_ai",
+                    "api_type": "openai",
                     "base_url": "https://api.openai.com/v1",
                 },
                 {
                     "model": "llama-7B",
                     "base_url": "http://127.0.0.1:8080",
-                    "api_type": "open_ai",
+                    "api_type": "openai",
                 }
             ],
             prompt="Hi",
@@ -792,7 +792,7 @@ class Completion(openai_Completion):
             raise ERROR
 
         # Warn if a config list was provided but was empty
-        if type(config_list) is list and len(config_list) == 0:
+        if isinstance(config_list, list) and len(config_list) == 0:
             logger.warning(
                 "Completion was provided with a config_list, but the list was empty. Adopting default OpenAI behavior, which reads from the 'model' parameter instead."
             )
@@ -866,12 +866,14 @@ class Completion(openai_Completion):
         if prompt is None:
             params["messages"] = (
                 [
-                    {
-                        **m,
-                        "content": cls.instantiate(m["content"], context, allow_format_str_template),
-                    }
-                    if m.get("content")
-                    else m
+                    (
+                        {
+                            **m,
+                            "content": cls.instantiate(m["content"], context, allow_format_str_template),
+                        }
+                        if m.get("content")
+                        else m
+                    )
                     for m in messages
                 ]
                 if context
