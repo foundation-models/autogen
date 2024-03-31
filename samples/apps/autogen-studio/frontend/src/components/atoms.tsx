@@ -750,7 +750,7 @@ export const ModelSelector = ({
             {React.cloneElement(menu as React.ReactElement, {
               style: menuStyle,
             })}
-            {models.length === 0 && (
+            {models.lengt 0 && (
               <>
                 <Divider style={{ margin: 0 }} />
                 <Space style={{ padding: 8 }}></Space>
@@ -1178,6 +1178,7 @@ export const AgentFlowSpecView = ({
             <Slider
               min={1}
               max={flowSpec.type === "groupchat" ? 600 : 30}
+
               defaultValue={flowSpec.config.max_consecutive_auto_reply}
               step={1}
               onChange={(value: any) => {
