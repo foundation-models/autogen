@@ -1,0 +1,4 @@
+[core]
+    remote = assistant
+['remote "assistant"']
+    url = azure://aidrive/assistant
