@@ -31,4 +31,4 @@ ENV PATH="/home/${USER}/.local/bin:${PATH}"
 RUN pip install PyYAML fastapi fastapi_utils pandarallel pydantic typer pyautogen llama_index weaviate-client
 RUN sudo apt-get install -y build-essential
 RUN mkdir -p /home/${USER}/workspace/autogen
-RUN chown -R ${USER}:users autogen /home/${USER}/workspace/autogen
+COPY --chown=${USER}:users autogen /home/${USER}/workspace/autogen
